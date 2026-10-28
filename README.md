@@ -2,6 +2,8 @@
 
 让 Codex 的 5 小时额度窗口在**你选的整点**开始，而不是在你随手发出第一条请求的那一刻开始。
 
+**简体中文** | [English](README.en.md)
+
 ## 问题是什么
 
 Codex（ChatGPT 订阅）的额度窗口是滚动的：从当前窗口的**第一条请求**起算 5 小时后重置。实际后果是，你上午 11:23 才开始用，窗口就是 11:23–16:23、16:23–21:23……重置点全天漂移，很容易在你正忙的时候撞上限流。
@@ -42,7 +44,7 @@ mkdir -p /tmp/codex-ping && cd /tmp/codex-ping && timeout 180 codex exec \
 3. 粘贴到你的 Muse 对话里，剩下的事 Muse 会做完：在本机登录 Codex（设备码授权）、验证链路、建好 4 个每日定时任务，并汇总下次运行时间。
 4. 成功静默、失败才报告，平时不用管它。
 
-English version: [PROMPT.en.md](PROMPT.en.md)
+English version: [README.en.md](README.en.md) · [PROMPT.en.md](PROMPT.en.md)
 
 ## 前置条件
 
