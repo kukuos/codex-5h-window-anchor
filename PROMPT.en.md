@@ -1,15 +1,17 @@
 # Prompt for Muse (copy the full text and paste it into your Muse chat)
 
 ```text
-Please set up Codex 5-hour quota window anchors on this machine for me: a set of tiny scheduled Codex requests, sent automatically at fixed times every day, that pre-start the quota window so its reset times line up with my usage habits.
+Please set up a Codex 5-hour quota scheduled refresh on this machine for me: one tiny Codex request, sent automatically at a fixed interval, that starts a new round immediately after the previous one ends, so my quota refills as soon as possible.
 
-## Parameters (use these defaults unless I changed them above)
-- Anchor times: 08:00, 13:00, 18:00, 22:00 every day
+## Parameters (use these defaults unless I changed them)
+- Refresh interval: every 5 hours 3 minutes
 - Timezone: Asia/Taipei
 - Reporting: stay silent on success, do not message me; only report failures
 
 ## Background (act on this, don't lecture me about it)
-With Codex on a ChatGPT subscription, the 5-hour usage window starts at the first request of the current window. If an anchor time arrives after the previous window has ended, this tiny request becomes the first request of a new window and anchors it to the hour. If the previous window is still running, the request simply lands inside it and does not restart it; that is normal.
+With Codex on a ChatGPT subscription, the 5-hour usage window starts at the first request of the current window. The first tiny request sent after the previous round ends becomes the first request of the new round and starts a new 5-hour countdown. If the previous round is still running, the request simply lands inside it and does not restart it; that is normal.
+
+Why the interval is 5 hours 3 minutes instead of exactly 5 hours: scheduled tasks can fire a few minutes earlier than the set time. On an exact 5-hour interval, a firing could land in the last few minutes of the previous round and be wasted. The extra 3 minutes is headroom for that early firing, so every run lands after the previous round has ended.
 
 ## What to do, in order, verifying each step
 1. Check the Codex CLI: run `codex --version` and `codex login status`.
@@ -21,20 +23,20 @@ With Codex on a ChatGPT subscription, the 5-hour usage window starts at the firs
    - Exit code 0 and a reply containing OK: pipeline works, continue.
    - Usage-limit error: note the reset time it reports; if it matches the reset time I told you, treat the pipeline as verified (right account, right command, quota just happens to be exhausted) and continue to the next step. Do not retry.
    - Any other error: summarize the actual error for me and stop for my decision.
-3. Create one daily scheduled task per anchor time (4 in total, using the timezone parameter above, exact times, no flexible shifting). Each task's instructions use the template below, replacing {TIME} with that anchor time and {RESET} with its reset time 5 hours later (for 22:00 that is 03:00 next day):
+3. Create ONE scheduled task that runs every 5 hours 3 minutes (using the timezone parameter above). The key is its starting point: base it on the successful verification request from step 2 — that request started a window that ends about 5 hours later, so the task's first run must be 3 minutes after that, i.e. 5 hours 3 minutes after the verification succeeded; after that it runs every 5 hours 3 minutes. The task's instructions use the template below:
 
 --- scheduled task template starts ---
-Goal: send one tiny Codex request on this machine to pre-start the user's Codex 5-hour quota window (this anchor is {TIME}; the anchored window resets at about {RESET}). To use as little quota as possible, always use the lightest Luna model, the lowest reasoning effort, and the shortest prompt; never switch back to a flagship model.
+Goal: send one tiny Codex request on this machine to start a new 5-hour Codex quota window after the previous round has ended. To use as little quota as possible, always use the lightest Luna model, the lowest reasoning effort, and the shortest prompt; never switch back to a flagship model.
 
 Steps:
 1. Run `codex login status`. If it shows not logged in, do not try to log in; report to the user that the login has expired and a new login is needed, then stop.
 2. If logged in, run the following command exactly once, no retries (it must include `< /dev/null`, otherwise codex exec waits on stdin and hangs; do not pipe this command, a pipe masks its real exit code):
    mkdir -p /tmp/codex-ping && cd /tmp/codex-ping && timeout 180 codex exec --ephemeral --skip-git-repo-check -s read-only -m gpt-6-luna -c model_reasoning_effort="low" "Say OK only" < /dev/null
 3. On success (exit code 0 and reply contains OK): do not message the user; just record the success internally.
-4. On failure: send the user a short message with the key points of the actual error. Distinguish: (a) usage-limit / rate-limit error — the previous window may not have ended yet at this anchor time, or quota is exhausted, so no new window was anchored; (b) login expired — handle as in step 1. Do not retry automatically and do not try workarounds.
+4. On failure: send the user a short message with the key points of the actual error. Distinguish: (a) usage-limit / rate-limit error — the previous round may not have ended yet, or quota is exhausted, so no new window was started; (b) login expired — handle as in step 1. Do not retry automatically and do not try workarounds.
 --- scheduled task template ends ---
 
-4. After creating them, verify each of the four tasks' next run time, then report back to me: the four anchor times, their next run dates, and the silent-on-success / report-on-failure rule. After that, do not bring this up again unless an anchor run fails.
+4. After creating it, verify the task's next run time, then report back to me: the refresh interval, the next run date and time, and the silent-on-success / report-on-failure rule. After that, do not bring this up again unless a run fails.
 
 ## Command spec (hard-won details, do not change)
 - `< /dev/null` is required: without it, codex exec waits for stdin and hangs.
@@ -45,6 +47,11 @@ Steps:
 
 ## Parameters you can change
 
-- **Times**: replace the anchor times at the top of the prompt with your own. Pick the first anchor before you usually start using Codex, and note that a window opened within 5 hours before an anchor will swallow that anchor (e.g. a window started after 03:00 runs past 08:00), so either avoid opening windows in that span or use several anchors as fallbacks, as this setup does.
+- **Interval**: replace the refresh interval at the top of the prompt with your own. Note the interval must be slightly longer than 5 hours (this setup uses 5 hours 3 minutes) to leave headroom for tasks firing early; on exactly 5 hours, a firing could land in the last few minutes of the previous round and be wasted.
 - **Timezone**: use your own IANA timezone, e.g. `America/New_York`, `Europe/London`, `Asia/Shanghai`.
-- **Reporting**: change the reporting line if you want a daily success confirmation instead of silence.
+- **Reporting**: change the reporting line if you want a confirmation after every run instead of silence.
+
+## Extra notes (for readers; not part of the prompt)
+
+- Run times no longer line up with the clock: because each interval is 3 minutes longer than 5 hours, firing times drift 3 minutes later each round. That is inherent to a fixed interval.
+- If you open a new window yourself through heavy Codex use in between, one interval request may land inside that window and be wasted; the first request after that window expires picks the chain up again automatically.

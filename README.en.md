@@ -1,27 +1,36 @@
-# Codex 5h Window Anchor
+# Codex 5-Hour Quota Scheduled Refresh
 
-Make Codex's 5-hour quota window start at **the hour you choose**, not at whatever moment you happen to send your first request.
+Every 5 hours 3 minutes, your computer automatically says one tiny thing to Codex first, so your quota refills just 3 minutes after the previous round ends — no need to think about it yourself.
 
 **English** | [简体中文](README.md)
 
 ## The problem
 
-Codex usage on a ChatGPT subscription runs in a rolling 5-hour window: it starts at the **first request** of the current window and resets 5 hours later. In practice, if you start working at 11:23, your windows become 11:23–16:23, 16:23–21:23, and so on. The reset points drift all day, and you tend to hit the limit right in the middle of real work.
+Codex's quota works like a stopwatch: the moment you send your first message, a 5-hour countdown starts, and only when it runs out does your quota refill.
 
-## The fix
+The trouble is, it refills whenever you happened to start. Start working at 11:23 and your refills land at 16:23, 21:23… — never on a round hour, and the limit tends to hit right in the middle of real work.
 
-Send one **tiny request** automatically at fixed times every day, while no window is active, so it becomes the first request of a new window:
+## How it works
 
-| Anchor (Asia/Taipei) | Anchored window | Resets at |
-|---|---|---|
-| 08:00 | 08:00–13:00 | 13:00 |
-| 13:00 | 13:00–18:00 | 18:00 |
-| 18:00 | 18:00–23:00 | 23:00 |
-| 22:00 | 22:00–03:00 next day (or catches a drifted window) | 03:00 |
+Since "whoever speaks first starts the countdown", let the computer speak first, the moment the previous round ends:
 
-An anchor that lands inside a still-running window is harmless — it just sits in that window. An anchor that arrives after a window ended pulls the next window back onto the hour. Multiple anchors back each other up: if daytime windows drift because of real usage, the evening anchors can still catch the next one.
+1. Every 5 hours 3 minutes, the computer automatically sends Codex the shortest possible message (just enough to get an "OK" back).
+2. It arrives 3 minutes after the previous round ends, becomes the first message of the new round, and a fresh 5-hour countdown starts there.
+3. Every round chains on the same way, so your quota is always on a "refills as soon as it ends" rhythm.
 
-Every anchor ping uses the cheapest combination we measured (**1,941 tokens** per ping):
+Why 5 hours 3 minutes instead of exactly 5 hours? Scheduled tasks can actually fire a few minutes *early*. On an exact 5-hour interval, a firing could land in the last few minutes of the previous round and be wasted. The extra 3 minutes is headroom for that early firing, so every run lands after the previous round has ended.
+
+Two questions everyone asks:
+
+- **If it speaks while I'm working, will it mess things up?** No. If the countdown is still running, its message just counts inside the current round — it doesn't restart anything and doesn't interrupt you. When the round ends, the next automatic message starts the new one.
+- **Does that message itself cost quota?** A tiny bit. It uses the cheapest setup we found (lightest model, replies with a single OK), measured at about 1,941 tokens per run — negligible next to getting your quota back on time.
+
+One small note: run times no longer line up with the clock. Because each interval is 3 minutes longer than 5 hours, the times drift 3 minutes later each round. That's inherent to a fixed interval and doesn't affect how it works.
+
+<details>
+<summary>Technical details (only if you like to tinker; safe to skip)</summary>
+
+The command each automatic message actually runs:
 
 ```bash
 mkdir -p /tmp/codex-ping && cd /tmp/codex-ping && timeout 180 codex exec \
@@ -30,32 +39,37 @@ mkdir -p /tmp/codex-ping && cd /tmp/codex-ping && timeout 180 codex exec \
   "Say OK only" < /dev/null
 ```
 
-Key details, all learned the hard way:
+Pitfalls found by testing:
 
-- **`< /dev/null` is required** — without it, `codex exec` waits on stdin and hangs.
-- **Do not pipe** this command; a pipe masks its real exit code.
-- The prompt itself is only a few characters. The fixed overhead of a Codex request (system instructions and tool definitions, measured at about 59k characters) is the bulk, so the **model tier** is what saves quota — the lightest Luna model at the lowest reasoning effort — not shaving words off the prompt.
-- This does not apply to API-key pay-as-you-go billing: there is no 5-hour window there.
+- `< /dev/null` is required — without it, `codex exec` waits for input and hangs forever.
+- Do not pipe this command; a pipe masks its real success/failure result.
+- The prompt itself is only a few characters. The fixed overhead of one Codex request (system instructions, tool definitions, etc., measured at about 59k characters) is the bulk, so the model tier is what saves quota — the lightest Luna model at the lowest reasoning effort — not shaving a few more words off the prompt.
+- Only applies to Codex on a ChatGPT subscription. API-key pay-as-you-go billing has no 5-hour countdown, so this doesn't apply.
+- Don't use fixed daily clock times instead: in testing, scheduled tasks fired about 3–4 minutes *before* the set hour, so a run could land inside a still-running round and be wasted. The fixed interval plus 3 minutes of headroom exists precisely to solve that.
+
+</details>
 
 ## How to use (for Muse users)
 
 1. Open [PROMPT.en.md](PROMPT.en.md) and copy the full prompt.
-2. Adjust the parameters at the top if you like (anchor times, timezone, reporting style).
-3. Paste it into your Muse chat. Muse does the rest: sign Codex in on this machine (device-code authorization), verify the pipeline, create the 4 daily scheduled tasks, and report back the next run times.
-4. Silent on success, failures get reported — nothing else to manage.
+2. Adjust the settings at the top if you like (refresh interval, timezone, whether to report every run).
+3. Paste it into your Muse chat. Muse does the rest: sign Codex in, verify the pipeline once, create the task that runs every 5 hours 3 minutes, and tell you when it runs next.
+4. Nothing to manage afterwards: silent on success, failures get reported.
 
-Chinese version: [PROMPT.md](PROMPT.md)
+Chinese version: [README.md](README.md) · [PROMPT.md](PROMPT.md)
 
 ## Requirements
 
 - A Muse that can run scheduled tasks, with the Codex CLI installed on the same machine
-- A ChatGPT subscription plan that includes Codex with its 5-hour window (e.g. Plus / Pro)
+- A ChatGPT subscription (Plus / Pro, or any plan whose Codex quota refills in 5-hour rounds)
 
 ## Field notes
 
-Built and verified on 2026-10-27, then running on schedule: the 18:00 and 22:00 anchors on 2026-10-27 and the 08:00 anchor on 2026-10-28 all succeeded at 1,941 tokens each, with window resets aligned to the anchor times.
+This has been running on a real account: on 2026-10-27 at 18:00 and 22:00, and on 2026-10-28 at 08:00, each run successfully aligned the refill time to the hour, at 1,941 tokens each.
 
-A side verification from build day: with the quota already exhausted, a test ping returned a usage-limit error whose "try again at" time matched the account's actual reset time exactly — proof the anchor pings hit the same account and the same quota as real usage.
+Build day also confirmed something important: with the quota already exhausted, a test message returned a usage-limit error whose reset time matched the account's actual reset time exactly — proof the automatic messages use the same account and the same quota as your own usage.
+
+Update, 2026-10-29: the original setup ran at fixed times every day (08:00, 13:00, 18:00, 22:00). Because scheduled tasks actually fired about 3–4 minutes before the hour, a run sometimes landed inside a still-running round and was wasted. It has been replaced by the current fixed interval of every 5 hours 3 minutes.
 
 ## License
 
